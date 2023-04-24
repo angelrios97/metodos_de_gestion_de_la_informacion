@@ -1,0 +1,436 @@
+---
+title: "Métodos de Gestión de la Información"
+subtitle: "Minería de reglas de asociación"
+author: "Ángel Ríos San Nicolás"
+date: "23 de agosto de 2021"
+output:
+  pdf_document: 
+    extra_dependencies: ["enumitem", "amsfonts", "verbatim", "graphicx", "hyperref"]
+bibliography: bibliografia.bib
+csl: "elsevier-with-titles.csl"
+nocite: '@*'
+---
+\newcommand{\cmtt}[1]{{\fontfamily{cmtt}\selectfont #1}}
+```{r, include=FALSE}
+rm(list = ls())
+library(arules)
+library(arulesViz)
+library(igraph)
+library(knitr)
+
+hook_output = knit_hooks$get('output')
+knit_hooks$set(output = function(x, options) {
+  # this hook is used only when the linewidth option is not NULL
+  if (!is.null(n <- options$linewidth)) {
+    x = knitr:::split_lines(x)
+    # any lines wider than n should be wrapped
+    if (any(nchar(x) > n)) x = strwrap(x, width = n)
+    x = paste(x, collapse = '\n')
+  }
+  hook_output(x, options)
+})
+```
+
+
+# Datos y preprocesamiento
+
+Los datos que analizaremos contienen 199523 instancias ponderadas con 41 variables de tipo demográfico y laboral del censo de EEUU tomados en los años 1994 y 1995, que están disponibles en \href{https://archive.ics.uci.edu/ml/datasets/Census-Income+%28KDD%29}{UCI Machine Learning Repository Census Income (KDD) Data Set}\footnote{UCI Machine Learning Repository Census-Income (KDD) Data Set: \url{https://archive.ics.uci.edu/ml/datasets/Census-Income+\%28KDD\%29}}. Los valores de los atributos son los siguientes:
+\begin{center}{\small \fontfamily{cmtt}\selectfont
+\begin{description}[itemsep = 0pt, font = \fontfamily{cmtt}\selectfont]
+\item[age:] continuous.
+\item[class of worker:] Not in universe, Federal government, Local government, Never worked, Private, Self-employed-incorporated, Self-employed-not incorporated, State government, Without pay.
+\item[detailed industry recode:] 0, 40, 44, 2, 43, 47, 48, 1, 11, 19, 24, 25, 32, 33, 34, 35, 36, 37, 38, 39, 4, 42, 45, 5, 15, 16, 22, 29, 31, 50, 14, 17, 18, 28, 3, 30, 41, 46, 51, 12, 13, 21, 23, 26, 6, 7, 9, 49, 27, 8, 10, 20.
+\item[detailed occupation recode:] 0, 12, 31, 44, 19, 32, 10, 23, 26, 28, 29, 42, 40, 34, 14, 36, 38, 2, 20, 25, 37, 41, 27, 24, 30, 43, 33, 16, 45, 17, 35, 22, 18, 39, 3, 15, 13, 46, 8, 21, 9, 4, 6, 5, 1, 11, 7.
+\item[education:] Children, 7th and 8th grade, 9th grade, 10th grade, High school graduate, 11th grade, 12th grade no diploma, 5th or 6th grade, Less than 1st grade, Bachelors degree(BA AB BS), 1st 2nd 3rd or 4th grade, Some college but no degree, Masters degree(MA MS MEng MEd MSW MBA), Associates degree-occup /vocational, Associates degree-academic program, Doctorate degree(PhD EdD), Prof school degree (MD DDS DVM LLB JD).
+\item[wage per hour:] continuous.
+\item[enroll in edu inst last wk:] Not in universe, High school, College or university.
+\item[marital stat:] Never married, Married-civilian spouse present, Married-spouse absent, Separated, Divorced, Widowed, Married-A F spouse present.
+\item[major industry code:] Not in universe or children, Entertainment, Social services, Agriculture, Education, Public administration, Manufacturing-durable goods, Manufacturing-nondurable goods, Wholesale trade, Retail trade, Finance insurance and real estate, Private household services, Business and repair services, Personal services except private HH, Construction, Medical except hospital, Other professional services, Transportation, Utilities and sanitary services, Mining, Communications, Hospital services, Forestry and fisheries, Armed Forces.
+\item[major occupation code:] Not in universe, Professional specialty, Other service, Farming forestry and fishing, Sales, Adm support including clerical, Protective services, Handlers equip cleaners etc , Precision production craft \& repair, Technicians and related support, Machine operators assmblrs \& inspctrs, Transportation and material moving, Executive admin and managerial, Private household services, Armed Forces.
+\item[race:] White, Black, Other, Amer Indian Aleut or Eskimo, Asian or Pacific Islander.
+\item[hispanic origin:] Mexican (Mexicano), Mexican-American, Puerto Rican, Central or South American, All other, Other Spanish, Chicano, Cuban, Do not know, NA.
+\item[sex:] Female, Male.
+\item[member of a labor union:] Not in universe, No, Yes.
+\item[reason for unemployment:] Not in universe, Re-entrant, Job loser - on layoff, New entrant, Job leaver, Other job loser.
+\item[full or part time employment stat:] Children or Armed Forces, Full-time schedules, Unemployed part- time, Not in labor force, Unemployed full-time, PT for non-econ reasons usually FT, PT for econ reasons usually PT, PT for econ reasons usually FT.
+\item[capital gains:] continuous.
+\item[capital losses:] continuous.
+\item[dividends from stocks:] continuous.
+\item[tax filer stat:] Nonfiler, Joint one under 65 \& one 65+, Joint both under 65, Single, Head of household, Joint both 65+.
+\item[region of previous residence:] Not in universe, South, Northeast, West, Midwest, Abroad.
+\item[state of previous residence:] Not in universe, Utah, Michigan, North Carolina, North Dakota, Virginia, Vermont, Wyoming, West Virginia, Pennsylvania, Abroad, Oregon, California, Iowa, Florida, Arkansas, Texas, South Carolina, Arizona, Indiana, Tennessee, Maine, Alaska, Ohio, Montana, Nebraska, Mississippi, District of Columbia, Minnesota, Illinois, Kentucky, Delaware, Colorado, Maryland, Wisconsin, New Hampshire, Nevada, New York, Georgia, Oklahoma, New Mexico, South Dakota, Missouri, Kansas, Connecticut, Louisiana, Alabama, Massachusetts, Idaho, New Jersey.
+\item[detailed household and family stat:] Child <18 never marr not in subfamily, Other Rel <18 never marr child of subfamily RP, Other Rel <18 never marr not in subfamily, Grandchild <18 never marr child of subfamily RP, Grandchild <18 never marr not in subfamily, Secondary individual, In group quarters, Child under 18 of RP of unrel subfamily, RP of unrelated subfamily, Spouse of householder, Householder, Other Rel <18 never married RP of subfamily, Grandchild <18 never marr RP of subfamily, Child <18 never marr RP of subfamily, Child <18 ever marr not in subfamily, Other Rel <18 ever marr RP of subfamily, Child <18 ever marr RP of subfamily, Nonfamily householder, Child <18 spouse of subfamily RP, Other Rel <18 spouse of subfamily RP, Other Rel <18 ever marr not in subfamily, Grandchild <18 ever marr not in subfamily, Child 18+ never marr Not in a subfamily, Grandchild 18+ never marr not in subfamily, Child 18+ ever marr RP of subfamily, Other Rel 18+ never marr not in subfamily, Child 18+ never marr RP of subfamily, Other Rel 18+ ever marr RP of subfamily, Other Rel 18+ never marr RP of subfamily, Other Rel 18+ spouse of subfamily RP, Other Rel 18+ ever marr not in subfamily, Child 18+ ever marr Not in a subfamily, Grandchild 18+ ever marr not in subfamily, Child 18+ spouse of subfamily RP, Spouse of RP of unrelated subfamily, Grandchild 18+ ever marr RP of subfamily, Grandchild 18+ never marr RP of subfamily, Grandchild 18+ spouse of subfamily RP.
+\item[detailed household summary in household:] Child under 18 never married, Other relative of householder, Nonrelative of householder, Spouse of householder, Householder, Child under 18 ever married, Group Quarters- Secondary individual, Child 18 or older.
+\item[instance weight:] continuous.
+\item[migration code-change in msa:] Not in universe, Nonmover, MSA to MSA, NonMSA to nonMSA, MSA to nonMSA, NonMSA to MSA, Abroad to MSA, Not identifiable, Abroad to nonMSA.
+\item[migration code-change in reg:] Not in universe, Nonmover, Same county, Different county same state, Different state same division, Abroad, Different region, Different division same region.
+\item[migration code-move within reg:] Not in universe, Nonmover, Same county, Different county same state, Different state in West, Abroad, Different state in Midwest, Different state in South, Different state in Northeast.
+\item[live in this house 1 year ago:] Not in universe under 1 year old, Yes, No.
+\item[migration prev res in sunbelt:] Not in universe, Yes, No.
+\item[num persons worked for employer:] continuous.
+\item[family members under 18:] Both parents present, Neither parent present, Mother only present, Father only present, Not in universe.
+\item[country of birth father:] Mexico, United-States, Puerto-Rico, Dominican-Republic, Jamaica, Cuba, Portugal, Nicaragua, Peru, Ecuador, Guatemala, Philippines, Canada, Columbia, El-Salvador, Japan, England, Trinadad\&Tobago, Honduras, Germany, Taiwan, Outlying-U S (Guam USVI etc), India, Vietnam, China, Hong Kong, Cambodia, France, Laos, Haiti, South Korea, Iran, Greece, Italy, Poland, Thailand, Yugoslavia, Holand-Netherlands, Ireland, Scotland, Hungary, Panama.
+\item[country of birth mother:] India, Mexico, United-States, Puerto-Rico, Dominican-Republic, England, Honduras, Peru, Guatemala, Columbia, El-Salvador, Philippines, France, Ecuador, Nicaragua, Cuba, Outlying-U S (Guam USVI etc), Jamaica, South Korea, China, Germany, Yugoslavia, Canada, Vietnam, Japan, Cambodia, Ireland, Laos, Haiti, Portugal, Taiwan, Holand-Netherlands, Greece, Italy, Poland, Thailand, Trinadad\&Tobago, Hungary, Panama, Hong Kong, Scotland, Iran.
+\item[country of birth self:] United-States, Mexico, Puerto-Rico, Peru, Canada, South Korea, India, Japan, Haiti, El-Salvador, Dominican-Republic, Portugal, Columbia, England, Thailand, Cuba, Laos, Panama, China, Germany, Vietnam, Italy, Honduras, Outlying-U S (Guam USVI etc), Hungary, Philippines, Poland, Ecuador, Iran, Guatemala, Holand-Netherlands, Taiwan, Nicaragua, France, Jamaica, Scotland, Yugoslavia, Hong Kong, Trinadad\&Tobago, Greece, Cambodia, Ireland.
+\item[citizenship:] Native- Born in the United States, Foreign born- Not a citizen of U S , Native- Born in Puerto Rico or U S Outlying, Native- Born abroad of American Parent(s), Foreign born- U S citizen by naturalization.
+\item[own business or self employed:] 0, 2, 1.
+\item[fill inc questionnaire for veteran's admin:] Not in universe, Yes, No.
+\item[veterans benefits:] 0, 2, 1.
+\item[weeks worked in year:] continuous.
+\item[year:] 94, 95.
+\item[total income:] greater or lesser than 50000 (+50000,-50000)
+
+
+\end{description}}\end{center}
+
+A la vista de los atributos, observamos que hay datos cuantitativos continuos que debemos discretizar, así como datos numéricos que no son cuantitativos y que hay que hay transformar en factores.
+
+
+Cargamos los datos en R.
+
+```{r}
+datos <- read.csv("census-income.csv", sep=",", strip.white=TRUE, stringsAsFactors=TRUE)
+```
+
+Imprimimos los valores de los atributos según como lo guarda R y lo comparamos con la lista anterior.
+
+```{r, linewidth=90}
+for (aux in names(datos)){
+  cat(aux, fill=TRUE)
+  if(is.null(levels(datos[[aux]]))){
+    cat(" numérico", fill=TRUE)
+  } else{
+  cat(levels(datos[[aux]]), fill=TRUE)
+  }
+}
+```
+
+Tenemos un atirbuto \cmtt{instance.weight} que indica el número de individuos del censo que comparten los mismos valores de los atributos, es decir, el peso de la instancia en la muestra. Esto significa que debemos hacer reglas de asociación con pesos para poder reflejar la realidad de los datos, ya que así damos importancia proporcional a cada instancia según el número de individuos que representa.
+
+Extraemos los pesos de los datos y el primer atributo que indica simplemente el número de la instancia porque no deben aparecer en las reglas de asociación.
+
+```{r}
+pesos <- subset(datos, select=instance.weight)
+datos <- subset(datos, select=-c(X, instance.weight))
+```
+
+Observamos también que tenemos datos numéricos que en realidad son cualitativos, así que los transformamos en factores.
+
+```{r}
+afactor <- c("detailed.industry.recode", "detailed.ocupation.recode",
+             "own.business.or.self.employed", "veterans.benefits", "year")
+datos[afactor] <- as.data.frame(lapply(datos[afactor], as.factor))
+```
+
+El resto de los datos numéricos se corresponden a atributos cuantitativos continuos como la edad. Para poder hacer minería de reglas de asociación necesitamos transformarlos en cualitativos discretizándolos. Discretizamos la edad con tantos \textit{bines} como la raíz cuadrada del número de datos. Para el resto, observamos que el hecho de ser $0$ tiene un significado especial: nada de sueldo por hora, ninguna ganancia o pérdida de capital, ningún dividendo, ningún trabajador o ninguna semana por año. Por lo tanto, queremos que el $0$ sea una categoría independiente en estos atributos. Discretizamos mediante un método de \textit{clustering} con $k$-medias de manera que no tomamos los extremos inferiores de los intervalos. De esta manera, los valores $0$ se discretizan como $\textup{NA}$.
+
+```{r}
+datos <- discretizeDF(datos, methods=list(
+  age=list(method="interval", breaks=sqrt(length(datos$age))),
+  wage.per.hour=list(method ="cluster", include.lowest=FALSE, right=TRUE),
+  capital.gains=list(method="cluster", include.lowest=FALSE, right=TRUE),
+  capital.losses=list(method="cluster", include.lowest=FALSE, right=TRUE),
+  dividends.from.stocks=list(method="cluster", include.lowest=FALSE, right=TRUE),
+  num.persons.worked.for.employer=list(method="cluster", include.lowest=FALSE, right=TRUE),
+  weeks.worked.in.year=list(method="cluster", include.lowest=FALSE, right=TRUE)))
+```
+
+Queremos convertir los $\textup{NA}$ en $0$. Para ello, cambiamos temporalmente los datos a caracteres, transformamos $\textup{NA}$ por $0$ y deshacemos el cambio.
+
+```{r}
+datos <- as.data.frame(lapply(datos, as.character))
+datos[is.na(datos)] <- "0"
+datos <- as.data.frame(lapply(datos, as.factor))
+```
+
+Observamos que hay nueve atributos que tienen valores faltantes para algunas instancias. Si eliminásemos todas cuyo valor para alguno de estos atributos falta, perderíamos alrededor del 47% de los datos. Por el contrario, si solo eliminásemos las instancias para los atributos que estemos considerando en cada momento en las reglas, estas describirían cada vez un conjunto distinto de datos, con lo que no se podrían comparar entre sí. Entre perder sobre el 47% de los datos o nueve atributos, priorizaremos lo segundo. En cualquier caso, definimos la siguiente función a la que se le pasan los atributos sobre los que se quiere construir reglas de asociación y elimina las instancias con valores faltantes. Tenemos en cuenta que debemos eliminar también el peso correspondiente a cada instancia eliminada.
+
+```{r}
+eliminar_faltantes <- function(atributos){
+  datos <- cbind(datos, pesos)
+  bool <- atributos %in% c("hispanic.origin",
+                           "state.of.previous.residence", 
+                           "detailed.household.and.family.stat", 
+                           "migration.code.change.in.msa",
+                           "migration.code.change.in.reg",
+                           "migration.prev.res.in.sunbelt",
+                           "country.of.birth.father",
+                           "country.of.birth.mother",
+                           "country.of.birth.self")
+  for (aux in atributos[bool]){
+    datos <- droplevels(subset(datos, datos[aux]!=" ?"))
+    datos <- droplevels(subset(datos, datos[[aux]]!=" NA"))
+  }
+  pesos_lista <<- datos$instance.weight
+  datos <<- subset.data.frame(datos, select=-instance.weight)
+}
+```
+
+Con esto quedan preprocesados los datos para cualquier tipo de regla de asociación.
+
+# Reglas de asociación
+
+Para minar las reglas de asociación utilizaremos el algoritmo Eclat con pesos. Para ello, definimos la siguiente función que permite calcularlas para los atributos que queramos fijando el soporte y la confianza mínimos así como la longitud mínima y máxima.
+
+```{r}
+reglas_weclat <- function(atributos, sop, conf, minl=1, maxl=5){
+  # Eliminamos las instancias con valores de atributos faltantes si es el caso.
+  eliminar_faltantes(atributos)
+  
+  # Preparamos la entrada para el algoritmo Eclat con pesos.
+  transacciones <- as(datos[atributos], "transactions")
+  
+  # Añadimos los pesos.
+  transacciones@itemsetInfo$weight <- NULL
+  transacciones@itemsetInfo$weight <- pesos_lista
+  
+  # Parámetros del algoritmo Eclat con pesos.
+  aparametros <- list(support=sop, minlen=minl, maxlen=maxl)
+  
+  # Calculamos los itemsets frecuentes con el algoritmo Eclat.
+  itemsets <- weclat(transacciones, aparametros, control=list(verbose=FALSE))
+  itemsets.df <- data.frame(itemsets=labels(itemsets), itemsets@quality)
+  
+  # Inducción de las reglas de asociación.
+  reglas <- ruleInduction(itemsets, transacciones, confidence=conf)
+  
+  # Devolvemos las reglas calculadas que no sean redundantes.
+  return(reglas[!is.redundant(reglas)])
+}
+```
+
+Para poder aplicar la función anterior y visualizar las reglas necesitaremos los paquetes \cmtt{arules} y \cmtt{arulesViz} que importamos de la siguiente manera.
+
+```{r, eval=FALSE}
+library(arules)
+library(arulesViz)
+``` 
+
+Aun sin tener en cuenta los atributos con datos faltantes, tenemos 32 atributos. Si utilizamos varios de ellos, a poco que disminuyamos el soporte mínimo obtendremos demasiadas reglas de asociación independientemente de que la confianza mínima escogida sea alta. Además, casi todos los atributos tienen un valor mayoritario respecto al resto lo que imposibilita obtener reglas con alto soporte y valores de atributos variados por el simple hecho de que esos valores no tienen ese soporte en la muestra. Podemos observar este fenómeno mediante un resumen frecuentista de los datos.
+```{r, size="tiny"}
+summary(datos)
+```
+Por poner solo un ejemplo, el atributo \cmtt{citizenship} tiene un valor que abarca una inmensa mayoría de las instancias, a saber, \textit{Native- Born in the United States}. Podemos calcular las frecuencias relativas de los valores.
+```{r}
+table(datos$citizenship)/sum(table(datos$citizenship))
+```
+Aunque depende en parte del peso de las instancias, vemos que si fijásemos un soporte mayor que 0.06712, solo podríamemos obtener reglas para ciudadanos nativos estadounideneses. Esto nos da una idea de lo bajo que debemos fijar el soporte mínimo para obtener reglas que involucren diferentes valores de las variables.
+
+La consideraciones anteriores no contemplan el hecho de que la mayoría de las reglas de asociación tienen como consecuente el valor mayoritario de un atributo, con lo que es difícil visualizar asociaciones que no terminen en los mismos valores. Obtendremos reglas con consecuentes variados simplemente tomando subconjuntos de las reglas que los contengan.
+
+Una vez escogidos el soporte y la confianza mínimos, generaremos las reglas y las filtraremos y representaremos algunos subconjuntos pequeños mediante coordenadas paralelas. Estos diagramas están formados por flechas que conectan los antecedentes y terminan en el consecuente. El grosor de la flecha indica el soporte y la saturación de color la confianza. Utilizaremos la opción \cmtt{reorder=TRUE} que aplica un método heurístico para minimizar el número de intersecciones de las flechas.
+
+```{r}
+paracoord_reglas <- function(reglas){
+  plot(reglas, method="paracoord", reorder=TRUE)
+}
+```
+
+También mostraremos las reglas de manera explícita junto a su soporte y confianza, para lo que definimos la siguiente función.
+
+```{r}
+print_reglas <- function(reglas){
+  reglas.df <- data.frame(rules=labels(reglas), reglas@quality)
+  reglas.df$rules <- as.character(reglas.df$rules)
+  reglas.df <- reglas.df[order(reglas.df$support),]
+  for (i in 1:length(reglas.df$rules)){
+    cat(paste(reglas.df$rules[i],
+              round(reglas.df$support[i], 4),
+              round(reglas.df$confidence[i], 4)), fill=TRUE)
+  }
+}
+```
+
+
+
+## Reglas de asociación de tipo sociodemográfico
+
+Calcularemos un primer conjunto de reglas de asociación relativas a atributos de caracter sociodemográfico como puede ser la edad, el género, la etnia o la ciudadanía sin tener en cuenta atributos de tipo puramente laboral o económico.
+
+```{r, size="tiny", fig.show="hide"}
+reglas <- reglas_weclat(c("age", "race", "sex", "marital.stat",
+                             "region.of.previous.residence",
+                             "detailed.household.summary.in.household",
+                             "citizenship"), sop=0.4, conf=0.8)
+paracoord_reglas(reglas[1:10])
+```
+```{r, echo=FALSE, fig.show="hide", results="hide"}
+pdf("figura1.pdf", width=9.5, height=4.5)
+paracoord_reglas(reglas[1:10])
+dev.off()
+```
+\begin{center}\includegraphics{figura1.pdf}\end{center}
+```{r, linewidth=90, size="small"} 
+print_reglas(reglas[1:10])
+```
+
+Obtenemos resultados esperados, reglas con alto soporte y confianza que indican que la mayoría de los datos se refieren a ciudadanos nativos estadounidenses blancos que no han cambiado su región de residencia. Las reglas que involucran el género tienen menor soporte porque la proporción aproximada en los datos es la mitad para masculino y femenino.
+
+Probamos ahora con un soporte muy pequeño del 0.02 y observamos que, efectivamente, obtenemos reglas con valores más variados para los atributos.
+
+```{r, fig.show="hide"}
+reglas<- reglas_weclat(c("age", "race", "sex", "marital.stat",
+                             "region.of.previous.residence",
+                             "detailed.household.summary.in.household",
+                             "citizenship"), sop=0.02, conf=0.8)
+paracoord_reglas(reglas[1:10])
+```
+```{r, echo=FALSE, fig.show="hide", results="hide"}
+pdf("figura2.pdf", width=9.5, height=4.5)
+paracoord_reglas(reglas[1:10])
+dev.off()
+```
+\begin{center}\includegraphics{figura2.pdf}\end{center}
+
+```{r, linewidth=90}
+print_reglas(reglas[1:10])
+```
+
+Extraemos del subconjunto de reglas calculadas aquellas que no terminan en valores mayoritarios de los atributos.
+
+```{r, fig.show="hide"}
+reglas.sub <- subset(reglas, subset= !(
+  rhs %oin% c("marital.stat= Never married", 
+              "citizenship= Native- Born in the United States", "race= White",
+              "detailed.household.summary.in.household= Householder",
+              "region.of.previous.residence= Not in universe")))
+paracoord_reglas(reglas.sub[1:10])
+```
+
+```{r echo=FALSE, fig.show="hide", results="hide"}
+pdf("figura3.pdf", width=9.5, height=4.5)
+paracoord_reglas(reglas.sub[1:10])
+dev.off()
+```
+\begin{center}\includegraphics{figura3.pdf}\end{center}
+
+```{r, linewidth=90}
+print_reglas(reglas.sub[1:10])
+```
+Visualizando parte de las reglas, observamos que ahora tenemos información más interesante.
+
+\newpage
+
+## Reglas de asociación de tipo laboral-económico
+
+```{r, fig.show="hide", results="hide"}
+reglas <- reglas_weclat(c("class.of.worker", "education", "wage.per.hour",
+                             "enroll.in.edu.inst.last.wk",
+                             "member.of.a.labor.union",
+                             "reason.for.unemployment",
+                             "full.or.part.time.employment.stat",
+                             "capital.gains", "capital.losses",
+                             "dividends.from.stocks", "tax.filer.stat",
+                             "num.persons.worked.for.employer",
+                             "own.business.or.self.employed"), sop=0.7, conf=0.8)
+paracoord_reglas(reglas[1:10])
+```
+
+```{r, echo=FALSE, fig.show="hide", results="hide"}
+pdf("figura4.pdf", width=9.5, height=4.5)
+paracoord_reglas(reglas[1:10])
+dev.off()
+```
+\begin{center}\includegraphics{figura4.pdf}\end{center}
+
+```{r, linewidth=90}
+print_reglas(reglas[1:10])
+```
+
+Con un valor alto para el soporte, tenemos las reglas de asociación esperadas, que se refieren mayoritariamente a ciudadanos que no trabajan y por lo tanto, no tienen sueldo, ni ganancias ni pertencen a un sindicato.
+
+Buscamos obtener reglas que asocien valores menos frecuentes por lo que consideramos un soporte mucho menor.
+```{r, fig.show="hide", results="hide"}
+reglas <- reglas_weclat(c("class.of.worker", "wage.per.hour",
+                          "enroll.in.edu.inst.last.wk", "member.of.a.labor.union",
+                          "reason.for.unemployment",
+                          "full.or.part.time.employment.stat", "capital.gains",
+                          "capital.losses", "dividends.from.stocks",
+                          "num.persons.worked.for.employer",
+                          "own.business.or.self.employed", "weeks.worked.in.year"),
+                        sop=0.015, conf=0.75)
+paracoord_reglas(reglas[1:10])
+```
+```{r, echo=FALSE, fig.show="hide", results="hide"}
+pdf("figura5.pdf", width=9.5, height=4.5)
+paracoord_reglas(reglas[1:10])
+dev.off()
+```
+\begin{center}\includegraphics{figura5.pdf}\end{center}
+```{r, linewidth=90}
+print_reglas(reglas[1:10])
+```
+
+Conseguimos obtener reglas que involucran las ganancias, las pérdidas o la pertenencia a un sindicato. 
+
+```{r, fig.show="hide", results="hide"}
+reglas.sub <- subset(reglas, subset= !(rhs %oin% c(
+  "class.of.worker= Not in universe", "wage.per.hour=0",
+  "enroll.in.edu.inst.last.wk= Not in universe",
+  "member.of.a.labor.union= Not in universe",
+  "reason.for.unemployment= Not in universe",
+  "full.or.part.time.employment.stat= Children or Armed Forces",
+  "capital.gains=0", "capital.losses=0", "dividends.from.stocks=0",
+  "num.persons.worked.for.employer=0", "own.business.or.self.employed=0",
+  "weeks.worked.in.year=0")))
+paracoord_reglas(reglas.sub[1:10])
+```
+```{r, echo=FALSE, fig.show="hide", results="hide"}
+pdf("figura6.pdf", width=9.5, height=4.5)
+paracoord_reglas(reglas.sub[1:10])
+dev.off()
+```
+\begin{center}\includegraphics{figura6.pdf}\end{center}
+```{r, linewidth=90}
+print_reglas(reglas.sub[1:10])
+```
+
+Al eliminar las reglas que terminan en valores muy frecuentes, obtenemos asociaciones que nos llaman la atención ya que afirman, por ejemplo, que si un individuo trabaja para el gobierno, no está desempleado y su sueldo es 0 por hora, entonces trabaja todo el año. Este tipo de asociaciones tienen un soporte de al menos el 0.15\% con una confianza alta, sobre el 80\%, con lo que podrían indicar que el atributo \cmtt{wage.per.hour} tiene datos erróneos. 
+
+
+## Reglas de asociación generales
+
+En esta sección construiremos reglas de asociación con ambos tipos de atributos.
+No podemos emplear todas las variables al mismo tiempo porque la complejidad del algoritmo es excesiva, sabemos que debemos tomar un soporte pequeño, con lo que se generarían demasiadas reglas. Seleccionamos un grupo de atributos interesante.
+
+```{r, fig.show="hide"}
+reglas <- reglas_weclat(c("age", "sex", "marital.stat",
+                          "class.of.worker", "education", "wage.per.hour",
+                          "num.persons.worked.for.employer",
+                          "total.income"), sop=0.1, 0.7)
+reglas.sub <- subset(reglas, subset= !(rhs %oin% c(
+  "class.of.worker= Not in universe", "wage.per.hour=0")))
+paracoord_reglas(reglas.sub[1:10])
+```
+```{r, echo=FALSE, results="hide"}
+pdf("figura7.pdf", width=9.5, height=4.5)
+paracoord_reglas(reglas.sub[1:10])
+dev.off()
+```
+\begin{center}\includegraphics{figura7.pdf}\end{center}
+```{r, linewidth=90}
+print_reglas(reglas.sub[1:10])
+```
+
+```{r, fig.show="hide"}
+plot(reglas.sub[11:20], method="paracoord", reorder=TRUE)
+```
+```{r, echo=FALSE, results="hide"}
+pdf("figura8.pdf", width=9.5, height=4.5)
+paracoord_reglas(reglas.sub[11:20])
+dev.off()
+```
+\begin{center}\includegraphics{figura8.pdf}\end{center}
+
+```{r, linewidth=90}
+print_reglas(reglas.sub[11:20])
+```
+
+En el caso general, conseguimos encontrar asociaciones más informativas porque relacionan las variables sociales con las económicas.
+
+
+\newpage
+
+# Bibliografía
+
+<div id="refs"></div>
